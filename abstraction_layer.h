@@ -16,7 +16,15 @@ int can_init(const char *ifname);
  * frame - указатель на наш универсальный CAN-кадр
  * Возвращает: 0 при успехе, -1 при ошибке.
  */
-int can_send(int sock_fd, const CAN_Frame *frame);
+int can_send(int sock_fd, const CAN_Frame *frame); // Изменить название на can_transmit
+
+/*
+ * Принимает CAN-кадр из сокета.
+ * sock_fd - дескриптор, полученный от can_init()
+ * frame - указатель на структуру, куда будут записаны данные
+ * Возвращает: 1 если кадр получен, 0 если кадров нет, -1 при ошибке.
+ */
+int can_receive(int sock_fd, CAN_Frame *frame);
 
 /*
  * Закрывает CAN-сокет.

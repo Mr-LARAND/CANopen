@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -66,6 +67,38 @@ int can_send(int sock_fd, const CAN_Frame *frame)
     }
 
     return 0;
+}
+
+int can_receive(int sock_fd, CAN_Frame *frame) 
+{
+    struct can_frame linux_frame;
+    ssize_t nbytes;
+
+    // Пытаемся прочитать кадр из сокета без блокировки
+    nbytes = recv(sock_fd, &linux_frame, sizeof(struct can_frame), MSG_DONTWAIT);
+
+    if (nbytes < 0) {
+        // Если ошибка EWOULDBLOCK или EAGAIN, это значит "данных пока нет".
+        // Это не настоящая ошибка, а нормальное поведение для неблокирующего сокета.
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            return 0; // Кадров нет
+        }
+        perror("Ошибка приема кадра (recv)");
+        return -1; // Произошла реальная ошибка
+    }
+
+    if (nbytes < sizeof(struct can_frame)) {
+        fprintf(stderr, "Ошибка: принят неполный CAN-кадр\n");
+        return -1;
+    }
+
+    // Конвертируем из структуры Linux в нашу универсальную структуру
+    frame->id = linux_frame.can_id;
+    frame->dlc = linux_frame.can_dlc;
+    memcpy(frame->data, linux_frame.data, linux_frame.can_dlc);
+    frame->rtr = (linux_frame.can_id & CAN_RTR_FLAG) ? 1 : 0;
+
+    return 1; // Кадр успешно получен
 }
 
 void can_close(int sock_fd) {

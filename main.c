@@ -1,38 +1,42 @@
 #include <stdio.h>
-#include "canopen_types.h"
-#include "nmt.h"
-#include "abstraction_layer.h"
+#include <unistd.h> // для usleep
 
-int main() 
-{
-    // 1. Инициализируем CAN-интерфейс "can0"
+#include "canopen_types.h"
+#include "abstraction_layer.h"
+#include "heartbeat.h"
+// nmt.h больше не нужен в main, так как мы пока ничего не отправляем
+
+int main() {
     int sock = can_init("can0");
     if (sock < 0) {
-        fprintf(stderr, "Не удалось запустить CAN. Убедитесь, что интерфейс 'can0' поднят.\n");
+        fprintf(stderr, "Не удалось запустить CAN. Убедитесь, что 'can0' поднят.\n");
         return 1;
     }
 
-    // 2. Создаем пустой CAN-кадр
-    CAN_Frame my_frame;
+    printf("Ожидание CANopen Heartbeat сообщений... Нажмите Ctrl+C для выхода.\n");
 
-    // 3. Заполняем его NMT-командой "Start Node" для узла с ID = 1
-    // (поменяйте 1 на ID вашего устройства, если он другой)
-    uint8_t node_id_to_start = 1; 
-    NMT_Create_Command(&my_frame, NMT_OPERATIONAL, node_id_to_start);
+    CAN_Frame received_frame;
+    while (1) {
+        // Пытаемся принять кадр
+        int result = can_receive(sock, &received_frame);
 
-    printf("Отправка NMT-команды: Start Node %d\n", node_id_to_start);
-    printf("ID: 0x%X, DLC: %d, Data: %02X %02X\n", 
-           my_frame.id, my_frame.dlc, my_frame.data[0], my_frame.data[1]);
+        if (result > 0) { // Если кадр получен
+            uint8_t node_id, state;
+            // Проверяем, не является ли кадр Heartbeat-сообщением
+            if (Heartbeat_Parse(&received_frame, &node_id, &state)) {
+                printf("Получен Heartbeat от узла %d. Состояние: %s (0x%02X)\n",
+                       node_id, NMT_StateToString(state), state);
+            }
+            // Здесь можно будет добавить парсеры для SDO, PDO и т.д.
+        } else if (result < 0) {
+            // Если произошла ошибка, выходим из цикла
+            break;
+        }
 
-    // 4. Отправляем кадр в шину
-    if (can_send(sock, &my_frame) == 0) {
-        printf("Команда успешно отправлена!\n");
-    } else {
-        fprintf(stderr, "Не удалось отправить команду.\n");
+        // Небольшая пауза, чтобы не загружать процессор на 100%
+        usleep(1000); // 1 мс
     }
 
-    // 5. Закрываем соединение
     can_close(sock);
-
     return 0;
 }
