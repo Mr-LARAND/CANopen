@@ -10,10 +10,10 @@
 #define NMT_RESET_COMMUNICATION     0x82 // Перезагрузка только связи CAN
 
 /* 
- * Функция для формирования CANopen-кадра с командой NMT.
- * frame   - указатель на пустой кадр, который мы заполним
- * command - одна из команд NMT_OPERATIONAL, NMT_STOPPED, NMT_PRE_OPERATIONAL...
- * node_id - ID узла (от 1 до 127). Если передать 0, команда уйдет всем узлам
+ * Функция для формирования CANopen-Frame с командой NMT.
+ * frame    - указатель на пустой кадр, который мы заполним
+ * command  - одна из команд NMT_OPERATIONAL, NMT_STOPPED, NMT_PRE_OPERATIONAL...
+ * node_id  - ID узла (от 1 до 127). Если передать 0, команда уйдет всем узлам
  */
 void NMT_Create_Command(CAN_Frame *frame, uint8_t command, uint8_t node_id);
 

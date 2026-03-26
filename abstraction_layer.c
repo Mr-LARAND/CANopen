@@ -5,15 +5,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-
-/* Эти заголовочные файлы специфичны для SocketCAN в Linux! */
 #include <linux/can.h>
 #include <linux/can/raw.h>
-
 #include "abstraction_layer.h"
 
 int can_init(const char *ifname) 
@@ -22,13 +18,13 @@ int can_init(const char *ifname)
     struct sockaddr_can addr;
     struct ifreq ifr;
 
-    // 1. Создаем сокет
+    // Создаём сокет
     if ((sock_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0) {
         perror("Ошибка создания сокета");
         return -1;
     }
 
-    // 2. Указываем имя CAN-интерфейса (например, "can0")
+    // Указываем имя CAN-интерфейса "can0"
     strcpy(ifr.ifr_name, ifname);
     if (ioctl(sock_fd, SIOCGIFINDEX, &ifr) < 0) {
         perror("Ошибка ioctl");
@@ -36,7 +32,7 @@ int can_init(const char *ifname)
         return -1;
     }
 
-    // 3. Привязываем сокет к CAN-интерфейсу
+    // Привязываем сокет к CAN-интерфейсу
     addr.can_family = AF_CAN;
     addr.can_ifindex = ifr.ifr_ifindex;
 
@@ -46,13 +42,13 @@ int can_init(const char *ifname)
         return -1;
     }
 
-    printf("CAN-интерфейс %s успешно инициализирован.\n", ifname);
+    printf("CAN-интерфейс %s успешно инициализирован!\n", ifname);
     return sock_fd;
 }
 
 int can_send(int sock_fd, const CAN_Frame *frame) 
 {
-    // Структура кадра, которую "понимает" ядро Linux
+    // Структура кадра, которую для ядра Linux
     struct can_frame linux_frame;
 
     // Конвертируем нашу универсальную структуру в структуру SocketCAN
@@ -74,15 +70,14 @@ int can_receive(int sock_fd, CAN_Frame *frame)
     struct can_frame linux_frame;
     ssize_t nbytes;
 
-    // Пытаемся прочитать кадр из сокета без блокировки
+    // Пытаемся прочитать кадр из сокета
     nbytes = recv(sock_fd, &linux_frame, sizeof(struct can_frame), MSG_DONTWAIT);
 
     if (nbytes < 0) {
-        // Если ошибка EWOULDBLOCK или EAGAIN, это значит "данных пока нет".
+        // Если ошибка EWOULDBLOCK или EAGAIN, это значит данных пока нет.
         // Это не настоящая ошибка, а нормальное поведение для неблокирующего сокета.
-        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) 
             return 0; // Кадров нет
-        }
         perror("Ошибка приема кадра (recv)");
         return -1; // Произошла реальная ошибка
     }
