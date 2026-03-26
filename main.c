@@ -1,18 +1,11 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "canopen_types.h"
 #include "abstraction_layer.h"
-#include "heartbeat.h" // Оставляем, чтобы видеть, что узел жив
-#include "sdo.h"       // Наш новый модуль
-
-void print_frame(const CAN_Frame* frame) {
-    printf("  ID: 0x%03X, DLC: %d, Data: ", frame->id, frame->dlc);
-    for (int i = 0; i < frame->dlc; ++i) {
-        printf("%02X ", frame->data[i]);
-    }
-    printf("\n");
-}
+#include "pdo.h"
+#include "nmt.h"
 
 int main() 
 {
@@ -21,63 +14,43 @@ int main()
         fprintf(stderr, "Не удалось запустить CAN.\n");
         return 1;
     }
+    uint16_t node_id = 5;
+    CAN_Frame Tx_frame;
+    // Перевод узла в Operational
+    NMT_Create_Command(&Tx_frame, NMT_OPERATIONAL, node_id);
 
-    // --- Отправка SDO-запроса ---
-    CAN_Frame sdo_request_frame;
-    uint8_t target_node_id = 5; // ID нашего STM32
+    can_send(sock, &Tx_frame);
+    printf("Перевод узла %d в режим \"Operational\"\n", node_id);
+    usleep(100000);
 
-    // Запрашиваем стандартный объект 0x1008, 0x00 - "Device Name"
-    SDO_Create_Read_Request(&sdo_request_frame, target_node_id, 0x1008, 0);
-    
-    printf("Отправка SDO-запроса на чтение [0x1008:0x00] узлу %d\n", target_node_id);
-    print_frame(&sdo_request_frame);
+    // Формирование RxPDO1-Frame
+    uint16_t control_word = 0x000F;
+    uint8_t pdo_data[2];
+    pdo_data[0] = (uint8_t)(control_word & 0xFF);
+    pdo_data[1] = (uint8_t)((control_word >> 8) & 0xFF);
 
-    if (can_send(sock, &sdo_request_frame) != 0) {
-        fprintf(stderr, "Ошибка отправки SDO-запроса.\n");
-        can_close(sock);
-        return 1;
-    }
+    PDO_Create_RxPDO(&Tx_frame, 1, node_id, pdo_data, 2);
+    can_send(sock, &Tx_frame);
 
-    // --- Прослушивание ответов ---
-    printf("\nОжидание ответов...\n");
+    // Слушаем шину на предмет Входящих TxPDO
+    CAN_Frame Rx_frame;
 
-    CAN_Frame received_frame;
-    while (1) 
+    while (1)
     {
-        if (can_receive(sock, &received_frame) > 0) 
-        {
-            uint16_t rx_index;
-            uint8_t rx_subindex;
-            uint8_t rx_data[4];
-            uint8_t rx_data_len;
+        if(can_receive(sock, &Rx_frame) > 0) {
+            uint8_t pdo_num, node_id, data_len;
+            uint8_t data[8];
 
-            // Парсим как SDO-ответ от узла 5
-            int sdo_result = SDO_Parse_Response(&received_frame, target_node_id, 
-                                                   &rx_index, &rx_subindex, 
-                                                   rx_data, &rx_data_len);
-
-            if (sdo_result == 1) {
-                printf("\n[SDO УСПЕХ] Узел %d ответил на индекс 0x%04X:%02X\n", 
-                       target_node_id, rx_index, rx_subindex);
-                printf("Данные (%d байт): %c%c%c%c\n\n", 
-                       rx_data_len, rx_data[0], rx_data[1], rx_data[2], rx_data[3]);
-            } 
-            else if (sdo_result == -1) 
-                printf("\n[SDO ОШИБКА] Узел %d вернул SDO Abort!\n\n", target_node_id);
-            else 
-            {
-                // Если это не SDO, возможно это Heartbeat
-                uint8_t hb_node, hb_state;
-                if (Heartbeat_Parse(&received_frame, &hb_node, &hb_state))
-                    printf("Heartbeat: Узел %d, Состояние 0x%02X\n", hb_node, hb_state);
+            if(PDO_Parse_TxPDO(&Rx_frame, &pdo_num, &node_id, data, &data_len)) {
+                if (data_len == 2){
+                    uint16_t status_word = data[0] | (data[1] << 8);
+                    printf("Получен TxPDO %d от узла %d. Statusword = 0x%04X\n", pdo_num, node_id, status_word);
+                }
                 else
-                    printf("ERROR: Неопознанный кадр!");
-    
+                    printf("Получен TxPDO %d от узла %d. Раземр данных %d байт\n", pdo_num, node_id, data_len);
             }
         }
-        usleep(1000);
+        usleep(1000);     
     }
-
-    can_close(sock);
     return 0;
 }
